@@ -1,31 +1,69 @@
 """SQLAlchemy models for Friender."""
+from flask import Flask
+# from flask_bcrypt import Bcrypt
 
 from datetime import datetime
-
-from flask_bcrypt import Bcrypt
 from flask_sqlalchemy import SQLAlchemy
-from SQLAlchemy.dialects.postgresql import VARCHAR
+from sqlalchemy.types import VARCHAR
 
-bcrypt = Bcrypt()
+# bcrypt = Bcrypt()
 db = SQLAlchemy()
 
 
-class Matches(db.Model):
+
+class Match(db.Model):
     """Connection of a usering doing the matching <-> the user being matched."""
 
     __tablename__ = 'matches'
 
-     user_being_followed_id = db.Column(
+    user_being_followed_id = db.Column(
         db.Integer,
         db.ForeignKey('users.id', ondelete="cascade"),
-        primary_key=True,
+        primary_key=True
     )
 
     user_following_id = db.Column(
         db.Integer,
         db.ForeignKey('users.id', ondelete="cascade"),
-        primary_key=True,
+        primary_key=True
     )
+
+class Message(db.Model):
+    """An individual message."""
+
+    __tablename__ = 'messages'
+
+    id = db.Column(
+        db.Integer,
+        primary_key=True
+    )
+
+    id_from = db.Column(
+        db.Integer,
+        db.ForeignKey('users.id', ondelete="cascade")
+    )
+
+    id_to  = db.Column(
+        db.Integer,
+        nullable=False,
+    )
+
+    text = db.Column(
+        db.String(140),
+        nullable=False,
+    )
+
+    timestamp = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=datetime.utcnow(),
+    )
+
+    def __repr__(self):
+        return f"<Message:\
+        to: {self.id_to},\
+        from: {self.id_from},\
+        timestamp: {self.timestamp}>"
 
 
 class User(db.Model):
@@ -50,6 +88,11 @@ class User(db.Model):
         unique=True,
     )
 
+    password = db.Column(
+        db.Text,
+        nullable=False,
+    )
+
     hobbies = db.Column(
         db.Text,
     )
@@ -72,23 +115,24 @@ class User(db.Model):
         nullable=False,
     )
 
-    #messages = db.relationship('Message')
+    messages = db.relationship(
+        "Message",
+        backref="users"
+    )
 
     followers = db.relationship(
         "User",
-        secondary="follows",
-        primaryjoin=(Follows.user_being_followed_id == id),
-        secondaryjoin=(Follows.user_following_id == id)
+        secondary="matches",
+        primaryjoin=(Match.user_being_followed_id == id),
+        secondaryjoin=(Match.user_following_id == id)
     )
 
     following = db.relationship(
         "User",
-        secondary="follows",
-        primaryjoin=(Follows.user_following_id == id),
-        secondaryjoin=(Follows.user_being_followed_id == id)
+        secondary="matches",
+        primaryjoin=(Match.user_following_id == id),
+        secondaryjoin=(Match.user_being_followed_id == id)
     )
-
-    # liked_messages = db.relationship('Message', secondary="likes")
 
     def __repr__(self):
         return f"<User #{self.id}:\
@@ -107,86 +151,48 @@ class User(db.Model):
         return len(found_user_list) == 1
 
     def is_following(self, other_user):
-        """Is this user following `other_use`?"""
+        """Is this user following `other_user`?"""
 
         found_user_list = [
             user for user in self.following if user == other_user]
         return len(found_user_list) == 1
 
-    @classmethod
-    def signup(cls, username, email, password, zipcode):
-        """Sign up user.
+    # @classmethod
+    # def signup(cls, username, email, password, zipcode):
+    #     """Sign up user.
 
-        Hashes password and adds user to system.
-        """
+    #     Hashes password and adds user to system.
+    #     """
 
-        hashed_pwd = bcrypt.generate_password_hash(password).decode('UTF-8')
+    #     hashed_pwd = bcrypt.generate_password_hash(password).decode('UTF-8')
 
-        user = User(
-            username=username,
-            email=email,
-            password=hashed_pwd,
-            zipcode=zipcode,
-        )
+    #     user = User(
+    #         username=username,
+    #         email=email,
+    #         password=hashed_pwd,
+    #         zipcode=zipcode,
+    #     )
 
-        db.session.add(user)
-        return user
+    #     db.session.add(user)
+    #     return user
 
-    @classmethod
-    def authenticate(cls, username, password):
-        """Find user with `username` and `password`.
+    # @classmethod
+    # def authenticate(cls, username, password):
+    #     """Find user with `username` and `password`.
 
-        This is a class method (call it on the class, not an individual user.)
-        It searches for a user whose password hash matches this password
-        and, if it finds such a user, returns that user object.
+    #     If can't find matching user (or if password is wrong), returns False.
+    #     """
 
-        If can't find matching user (or if password is wrong), returns False.
-        """
+    #     user = cls.query.filter_by(username=username).first()
 
-        user = cls.query.filter_by(username=username).first()
+    #     if user:
+    #         is_auth = bcrypt.check_password_hash(user.password, password)
+    #         if is_auth:
+    #             return user
 
-        if user:
-            is_auth = bcrypt.check_password_hash(user.password, password)
-            if is_auth:
-                return user
-
-        return False
+    #     return False
 
 
-class Message(db.Model):
-    """An individual message."""
-
-    __tablename__ = 'messages'
-
-    id_to = db.Column(
-        db.Integer,
-        db.ForeignKey('users.id', ondelete="cascade"),
-        primary_key=True,
-    )
-
-    id_from = db.Column(
-        db.ForeignKey('users.id', ondelete="cascade"),
-        primary_key=True,
-    )
-
-    text = db.Column(
-        db.String(140),
-        nullable=False,
-    )
-
-    timestamp = db.Column(
-        db.DateTime,
-        nullable=False,
-        default=datetime.utcnow(),
-    )
-
-    user_id = db.Column(
-        db.Integer,
-        db.ForeignKey('users.id', ondelete='CASCADE'),
-        nullable=False,
-    )
-
-    user = db.relationship('User')
 
 
 def connect_db(app):
@@ -197,23 +203,3 @@ def connect_db(app):
 
     db.app = app
     db.init_app(app)
-
-
-class Like(db.Model):
-    """Join table between users and messages (the join represents a like)."""
-
-    __tablename__ = 'likes'
-
-    user_id = db.Column(
-        db.Integer,
-        db.ForeignKey('users.id', ondelete='CASCADE'),
-        nullable=False,
-        primary_key=True
-    )
-
-    message_id = db.Column(
-        db.Integer,
-        db.ForeignKey('messages.id', ondelete='CASCADE'),
-        nullable=False,
-        primary_key=True
-    )
