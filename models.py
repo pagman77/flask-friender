@@ -1,12 +1,12 @@
 """SQLAlchemy models for Friender."""
 from flask import Flask
-# from flask_bcrypt import Bcrypt
+from flask_bcrypt import Bcrypt
 
 from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.types import VARCHAR
 
-# bcrypt = Bcrypt()
+bcrypt = Bcrypt()
 db = SQLAlchemy()
 
 
@@ -64,6 +64,7 @@ class Message(db.Model):
         to: {self.id_to},\
         from: {self.id_from},\
         timestamp: {self.timestamp}>"
+
 
 
 class User(db.Model):
@@ -157,41 +158,54 @@ class User(db.Model):
             user for user in self.following if user == other_user]
         return len(found_user_list) == 1
 
-    # @classmethod
-    # def signup(cls, username, email, password, zipcode):
-    #     """Sign up user.
+    @classmethod
+    def signup(cls, username, email, password, zipcode):
+        """Sign up user.
 
-    #     Hashes password and adds user to system.
-    #     """
+        Hashes password and adds user to system.
+        """
 
-    #     hashed_pwd = bcrypt.generate_password_hash(password).decode('UTF-8')
+        hashed_pwd = bcrypt.generate_password_hash(password).decode('UTF-8')
 
-    #     user = User(
-    #         username=username,
-    #         email=email,
-    #         password=hashed_pwd,
-    #         zipcode=zipcode,
-    #     )
+        user = User(
+            username=username,
+            email=email,
+            password=hashed_pwd,
+            zipcode=zipcode,
+        )
 
-    #     db.session.add(user)
-    #     return user
+        db.session.add(user)
+        return user
 
-    # @classmethod
-    # def authenticate(cls, username, password):
-    #     """Find user with `username` and `password`.
+    @classmethod
+    def authenticate(cls, username, password):
+        """Find user with `username` and `password`.
 
-    #     If can't find matching user (or if password is wrong), returns False.
-    #     """
+        If can't find matching user (or if password is wrong), returns False.
+        """
 
-    #     user = cls.query.filter_by(username=username).first()
+        user = cls.query.filter_by(username=username).first()
 
-    #     if user:
-    #         is_auth = bcrypt.check_password_hash(user.password, password)
-    #         if is_auth:
-    #             return user
+        if user:
+            is_auth = bcrypt.check_password_hash(user.password, password)
+            if is_auth:
+                return user
 
-    #     return False
+        return False
 
+    def to_dict(self):
+
+        return {
+            "id": self.id,
+            "email": self.email,
+            "username": self.username,
+            "password": self.password,
+            "hobbies": self.hobbies,
+            "bio": self.bio,
+            "interests": self.interests,
+            "location": self.location,
+            "friend_radius": self.friend_radius
+        }
 
 
 
