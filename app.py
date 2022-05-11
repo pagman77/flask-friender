@@ -1,11 +1,13 @@
+import json
 import os
+from urllib import response
 import boto3, botocore
 from flask import Flask, flash, redirect, request, jsonify
 from flask_debugtoolbar import DebugToolbarExtension
 from sqlalchemy.exc import IntegrityError
-# from flask_jwt import JWT
+from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required, JWTManager
 
-from models import db, connect_db, User, Message, Match
+from models import db, connect_db, User, Message, Match, Images
 
 
 app = Flask(__name__)
@@ -18,100 +20,106 @@ app.config['SQLALCHEMY_DATABASE_URI'] = (
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ECHO'] = False
 app.config['DEBUG_TB_INTERCEPT_REDIRECTS'] = True
+
 app.config['SECRET_KEY'] = os.environ['SECRET_KEY']
 app.config['S3_KEY'] = os.environ['AWS_ACCESS_KEY_ID']
 app.config['S3_SECRET'] = os.environ['AWS_SECRET_ACCESS_KEY']
 app.config['S3_BUCKET'] = os.environ['BUCKET_NAME']
 app.config['S3_LOCATION'] = 'http://{}.s3.amazonaws.com/'.format(app.config['S3_BUCKET'])
-# S3_BUCKET = app.config['S3_BUCKET']
+
 
 s3 = boto3.client('s3',
                     aws_access_key_id=app.config['S3_KEY'],
                     aws_secret_access_key= app.config['S3_SECRET'],
                      )
 
-# toolbar = DebugToolbarExtension(app)
+toolbar = DebugToolbarExtension(app)
 
+jwt = JWTManager(app)
 connect_db(app)
 db.create_all()
 
-##############################################################################
-# User signup/login/logout
+#############################################################################
 
-# @app.before_request
-# def verifyToken():
-#     """Verify the incoming token is valid"""
-
-#     token = request.token
-
-#     if CURR_USER_KEY in session:
-#         g.user = User.query.get(session[CURR_USER_KEY])
-
-#     else:
-#         g.user = None
+####################User signup/login/logout#############################
 
 
-# @app.route('/signup', methods=["POST"])
-# def signup():
-#     """Handle user signup.
+@app.route('/api/signup', methods=["POST"])
+def signup():
+    """Handle user signup.
 
-#     Create new user and add to DB.
+    Create new user and add to DB.
 
-#     If the there already is a user with that username: flash message
-#     and re-present form.
-#     """
+    If the there already is a user with that username: flash message
+    and re-present form.
+    """
 
-#     user_info = res.body
+    try:
+        username=request.json["username"]
+        email=request.json["email"]
+        password=request.json["password"]
+        location= request.json["location"]
 
-#     try:
-#         new_user = User.signup(user_info)
-#     except IntegrityError:
-#         return ("Username already taken").json()
+        new_user = User.signup(username, email, password, location)
+        db.session.commit()
 
-#         do_login(user)
+        access_token = create_access_token(identity=username)
+        return jsonify(access_token=access_token)
 
-# @app.route('/token', methods=["POST"])
-# def login():
-#     """POST /auth/token:  { username, password } => { token }
-#     Returns JWT token which can be used to authenticate further requests. 
-#     Authorization required: none"""
+    except IntegrityError:
+        return jsonify(msg = "Username already taken")
 
 
-#         user = User.authenticate(form.username.data,
-#                                  form.password.data)
 
-#         if user:
-#             do_login(user)
-#             flash(f"Hello, {user.username}!", "success")
-#             return redirect("/")
+@app.route('/api/token', methods=["POST"])
+def login():
+    """POST /auth/token:  { username, password } => { token }
+    Returns JWT token which can be used to authenticate further requests.
+    Authorization required: none"""
 
-#         flash("Invalid credentials.", 'danger')
+    user = User.authenticate(request.json["username"],
+                                 request.json["password"])
 
-#     return render_template('users/login.html', form=form)
+    if user:
+        access_token = create_access_token(identity=user.username)
+        return jsonify(access_token=access_token)
+
+    return jsonify(msg="Could not authenticate!")
+
+
 
 
 ############# USER ROUTES ############################
+
 @app.get("/api/users")
+@jwt_required()
 def get_users():
-    """ Get all users 
+    """ Get all users
         Returns JSON like:
         {users: [{id, email, username, hobbies, interests}, ...]}
     """
+    # current_user = get_jwt_identity()
 
     users = [user.to_dict() for user in User.query.all()]
 
     return jsonify(users=users)
 
 @app.get('/api/users/<int:user_id>')
-def single_user(user_id):
-    """Get a single user"""
+@jwt_required()
+def get_single_user(user_id):
+    """Get a single user
+    returns {msg: "User not found!"} if no user exists"""
 
-    user = User.query.get_or_404(user_id)
+    try:
+        user = User.query.get(user_id)
+        user = user.to_dict()
+        return jsonify(user=user)
+    except AttributeError:
+        return jsonify({"msg": "User not found!"})
 
-    user = user.to_dict()
-    return jsonify(user=user)
 
 @app.patch('/api/users/<int:user_id>')
+@jwt_required()
 def edit_single_user(user_id):
     """update user
        returns JSON like:
@@ -119,54 +127,76 @@ def edit_single_user(user_id):
     """
 
     data = request.json
-    user = User.query.get_or_404(user_id)
 
-    user.hobbies = data.get('hobbies', user.hobbies)
-    user.bio = data.get('bio', user.bio)
-    user.interests = data.get('size', user.interests)
-    user.location = data.get('size', user.location)
-    user.friend_radius = data.get('size', user.friend_radius)
+    try:
+        user = User.query.get(user_id)
+        user.hobbies = data.get('hobbies', user.hobbies)
+        user.bio = data.get('bio', user.bio)
+        user.interests = data.get('size', user.interests)
+        user.location = data.get('size', user.location)
+        user.friend_radius = data.get('size', user.friend_radius)
 
-    db.session.add(user)
-    db.session.commit()
+        db.session.add(user)
+        db.session.commit()
 
-    user = user.to_dict()
-    return jsonify(user=user)
+        user = user.to_dict()
+        return jsonify(user=user)
+
+    except AttributeError:
+        return jsonify({"msg": "User not found!"})
+
 
 @app.delete('/api/users/<int:user_id>')
-def get_photos(user_id):
+@jwt_required()
+def delete_user(user_id):
     """Delete a user"""
 
-    user = User.query.get_or_404(user_id)
+    try:
+        user = User.query.get(user_id)
+        db.session.delete(user)
+        db.session.commit()
+        return jsonify(msg="deleted sucessfully")
+    except AttributeError:
+        return jsonify({"msg": "User not found!"})
 
-    db.session.delete(user)
-    db.session.commit()
-    return jsonify(msg="deleted sucessfully")
 
 @app.post('/api/users/<int:user_id>/match')
+@jwt_required()
 def match_person(user_id):
     """Match with a different person"""
 
-    match_id = request.json.match
+    print(request.json)
+
+    match_id = request.json["match"]
     match = Match.add_match(user_id,match_id)
-    
+
     db.session.commit()
     return jsonify(msg="friended successfully")
 
-@app.delete('/api/users/<int:user_id>/match')
+
+@app.post('/api/users/<int:user_id>/unmatch')
+@jwt_required()
 def unmatch_person(user_id):
     """unmatch with a different person"""
-    match_id = request.json.match
+    match_id = request.json["unmatch"]
 
-    match = Match.filter_by(user_being_followed_id=user_id and user_following_id=match_id).one()
+    match = Match.query.filter(
+        Match.user_being_followed_id == user_id,
+        Match.user_following_id == match_id).one_or_none()
+
+    if not match:
+        return jsonify({"msg": "No match found!"})
+
     match.unfriended = True
-
     db.session.commit()
     return jsonify(msg="unfriended successfully")
 
-############# USER PHOTO ROUTES ############################    
+
+
+############# USER PHOTO ROUTES ############################
 
 @app.get('/api/users/<int:user_id>/photos')
+@jwt_required()
 def get_photos(user_id):
     """Get all photos of a user"""
 
@@ -179,9 +209,12 @@ def get_photos(user_id):
     return jsonify(images=images)
 
 @app.post('/api/users/<int:user_id>/photos')
+@jwt_required()
 def upload_pic(user_id):
     """Upload a picture"""
+
     img = request.files['file']
+
     if img:
             filename = secure_filename(img.filename)
             img.save(filename)
@@ -198,24 +231,37 @@ def upload_pic(user_id):
             file_path = "{}{}".format(app.config["S3_LOCATION"], img.filename)
 
             user = User.query.get_or_404(user_id)
+            image = Images.create_new_image(user.id, file_path, img.filename)
 
-            user.images.append(file_path)
+            user.images.append(image)
 
             db.session.commit()
 
             return jsonify(file_path=file_path,msg="success")
+
     return jsonify(msg="no image specified")
 
+
 @app.delete('/api/users/<int:user_id>/photos/<int:photo_id>')
-def get_photos(user_id,photo_id):
-    """Get all photos of a user"""
+@jwt_required()
+def delete_photos(user_id, photo_id):
+    """Delete a user photo"""
 
-    image = Images.query.get_or_404(photo_id)
+    try:
+        image = Images.query.get(photo_id)
 
-    db.session.delete(image)
-    db.session.commit()
-    return jsonify(msg="deleted sucessfully")
+        response = s3.delete_object(
+        Bucket=app.config['S3_BUCKET'],
+        Key=image.filename
+)
+        db.session.delete(image)
+        db.session.commit()
 
+
+        return jsonify(msg="deleted sucessfully")
+
+    except AttributeError:
+        return jsonify({"msg": "Image not found!"})
 
 
 

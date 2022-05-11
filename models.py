@@ -25,9 +25,13 @@ class Images(db.Model):
         db.ForeignKey('users.id', ondelete="cascade")
     )
 
-    image_path = db.Column(
-        db.text,
+    path = db.Column(
+        db.Text,
         nullable=False,
+    )
+    filename = db.Column(
+        db.Text,
+        nullable=False
     )
 
     def to_dict(self):
@@ -35,10 +39,26 @@ class Images(db.Model):
         return {
             "id": self.id,
             "user_id": self.user_id,
-            "image_path": self.image_path
+            "path": self.path,
+            "filename": self.filename
         }
 
-    
+    @classmethod
+    def create_new_image(cls, user_id, path, filename):
+        """ Returns a class of a new image
+        {id, user_id, image_path} """
+
+        image = Images(
+            user_id=user_id,
+            path=path,
+            filename= filename
+        )
+
+        db.session.add(image)
+
+        return image
+
+
 
 
 
@@ -164,13 +184,15 @@ class User(db.Model):
     )
 
     friend_radius = db.Column(
-        db.Text,
+        db.Integer,
         nullable=False,
+        default=50
     )
 
     messages = db.relationship(
         "Message",
-        backref="users"
+        backref="users",
+        primaryjoin=(Message.id_from == id)
     )
 
     followers = db.relationship(
@@ -189,7 +211,8 @@ class User(db.Model):
 
     images = db.relationship(
         "Images",
-        backref="users"
+        backref="users",
+        primaryjoin=(Images.user_id == id)
     )
 
     def __repr__(self):
@@ -216,7 +239,7 @@ class User(db.Model):
         return len(found_user_list) == 1
 
     @classmethod
-    def signup(cls, username, email, password, zipcode):
+    def signup(cls, username, email, password, location):
         """Sign up user.
 
         Hashes password and adds user to system.
@@ -228,7 +251,7 @@ class User(db.Model):
             username=username,
             email=email,
             password=hashed_pwd,
-            zipcode=zipcode,
+            location=location
         )
 
         db.session.add(user)
@@ -242,7 +265,7 @@ class User(db.Model):
         """
 
         user = cls.query.filter_by(username=username).first()
-
+        print(user)
         if user:
             is_auth = bcrypt.check_password_hash(user.password, password)
             if is_auth:
