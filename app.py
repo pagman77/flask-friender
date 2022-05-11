@@ -1,15 +1,15 @@
 import os
-
-from flask import Flask, flash, redirect
+import boto3, botocore
+from flask import Flask, flash, redirect, request, jsonify
 from flask_debugtoolbar import DebugToolbarExtension
 from sqlalchemy.exc import IntegrityError
-from flask_jwt import JWT
+# from flask_jwt import JWT
 
 from models import db, connect_db, User, Message, Match
 
 
 app = Flask(__name__)
-
+from werkzeug.utils import secure_filename
 
 # Get DB_URI from environ variable (useful for production/testing) or,
 # if not set there, use development local db.
@@ -19,10 +19,21 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ECHO'] = False
 app.config['DEBUG_TB_INTERCEPT_REDIRECTS'] = True
 app.config['SECRET_KEY'] = os.environ['SECRET_KEY']
+app.config['S3_KEY'] = os.environ['AWS_ACCESS_KEY_ID']
+app.config['S3_SECRET'] = os.environ['AWS_SECRET_ACCESS_KEY']
+app.config['S3_BUCKET'] = os.environ['BUCKET_NAME']
+app.config['S3_LOCATION'] = 'http://{}.s3.amazonaws.com/'.format(app.config['S3_BUCKET'])
+# S3_BUCKET = app.config['S3_BUCKET']
+
+s3 = boto3.client('s3',
+                    aws_access_key_id=app.config['S3_KEY'],
+                    aws_secret_access_key= app.config['S3_SECRET'],
+                     )
 
 # toolbar = DebugToolbarExtension(app)
 
 connect_db(app)
+db.create_all()
 
 ##############################################################################
 # User signup/login/logout
@@ -78,7 +89,9 @@ connect_db(app)
 
 #     return render_template('users/login.html', form=form)
 
-@app.get("api/users")
+
+############# USER ROUTES ############################
+@app.get("/api/users")
 def get_users():
     """ Get all users 
         Returns JSON like:
@@ -89,7 +102,7 @@ def get_users():
 
     return jsonify(users=users)
 
-@app.get('api/users/<int:user_id>')
+@app.get('/api/users/<int:user_id>')
 def single_user(user_id):
     """Get a single user"""
 
@@ -98,20 +111,110 @@ def single_user(user_id):
     user = user.to_dict()
     return jsonify(user=user)
 
-@app.patch('api/users/<int:user_id>')
-def single_user(user_id):
-    """update user"""
+@app.patch('/api/users/<int:user_id>')
+def edit_single_user(user_id):
+    """update user
+       returns JSON like:
+       {user: [{id, username, email, hobbies, interests...}]}
+    """
 
     data = request.json
     user = User.query.get_or_404(user_id)
 
-    # cupcake.flavor = data.get('flavor', cupcake.flavor)
-    # cupcake.rating = data.get('rating', cupcake.rating)
-    # cupcake.size = data.get('size', cupcake.size)
+    user.hobbies = data.get('hobbies', user.hobbies)
+    user.bio = data.get('bio', user.bio)
+    user.interests = data.get('size', user.interests)
+    user.location = data.get('size', user.location)
+    user.friend_radius = data.get('size', user.friend_radius)
+
+    db.session.add(user)
+    db.session.commit()
 
     user = user.to_dict()
     return jsonify(user=user)
 
+@app.delete('/api/users/<int:user_id>')
+def get_photos(user_id):
+    """Delete a user"""
+
+    user = User.query.get_or_404(user_id)
+
+    db.session.delete(user)
+    db.session.commit()
+    return jsonify(msg="deleted sucessfully")
+
+@app.post('/api/users/<int:user_id>/match')
+def match_person(user_id):
+    """Match with a different person"""
+
+    match_id = request.json.match
+    match = Match.add_match(user_id,match_id)
+    
+    db.session.commit()
+    return jsonify(msg="friended successfully")
+
+@app.delete('/api/users/<int:user_id>/match')
+def unmatch_person(user_id):
+    """unmatch with a different person"""
+    match_id = request.json.match
+
+    match = Match.filter_by(user_being_followed_id=user_id and user_following_id=match_id).one()
+    match.unfriended = True
+
+    db.session.commit()
+    return jsonify(msg="unfriended successfully")
+
+############# USER PHOTO ROUTES ############################    
+
+@app.get('/api/users/<int:user_id>/photos')
+def get_photos(user_id):
+    """Get all photos of a user"""
+
+    user = User.query.get_or_404(user_id)
+
+    images = user.images
+
+    images = [image.to_dict() for image in images]
+
+    return jsonify(images=images)
+
+@app.post('/api/users/<int:user_id>/photos')
+def upload_pic(user_id):
+    """Upload a picture"""
+    img = request.files['file']
+    if img:
+            filename = secure_filename(img.filename)
+            img.save(filename)
+            s3.upload_file(
+                Bucket = app.config['S3_BUCKET'],
+                Filename=filename,
+                Key = filename,
+                ExtraArgs={
+                    "ContentType":  "image/jpeg",
+                    'ACL': "public-read"
+                }
+            )
+            msg = "Upload Done ! "
+            file_path = "{}{}".format(app.config["S3_LOCATION"], img.filename)
+
+            user = User.query.get_or_404(user_id)
+
+            user.images.append(file_path)
+
+            db.session.commit()
+
+            return jsonify(file_path=file_path,msg="success")
+    return jsonify(msg="no image specified")
+
+@app.delete('/api/users/<int:user_id>/photos/<int:photo_id>')
+def get_photos(user_id,photo_id):
+    """Get all photos of a user"""
+
+    image = Images.query.get_or_404(photo_id)
+
+    db.session.delete(image)
+    db.session.commit()
+    return jsonify(msg="deleted sucessfully")
 
 
 
@@ -140,7 +243,9 @@ def single_user(user_id):
 
 
 
-db.create_all()
+
+
+
 
 
 # INSERT INTO USERS (username, email, location, password, friend_radius)

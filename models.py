@@ -10,6 +10,37 @@ bcrypt = Bcrypt()
 db = SQLAlchemy()
 
 
+class Images(db.Model):
+    """images of users"""
+
+    __tablename__ = 'images'
+
+    id = db.Column(
+        db.Integer,
+        primary_key=True
+    )
+
+    user_id  = db.Column(
+        db.Integer,
+        db.ForeignKey('users.id', ondelete="cascade")
+    )
+
+    image_path = db.Column(
+        db.text,
+        nullable=False,
+    )
+
+    def to_dict(self):
+
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "image_path": self.image_path
+        }
+
+    
+
+
 
 class Match(db.Model):
     """Connection of a usering doing the matching <-> the user being matched."""
@@ -28,6 +59,27 @@ class Match(db.Model):
         primary_key=True
     )
 
+    unfriended = db.Column(
+        db.Boolean,
+        default=False,
+        nullable=False
+    )
+
+    @classmethod
+    def add_match(cls, user_id, match_id):
+        """Add a match to the database."""
+
+        match = Match(
+            user_being_followed_id = user_id,
+            user_following_id = match_id,
+            unfriended = False
+        )
+
+        db.session.add(match)
+        return match
+
+
+
 class Message(db.Model):
     """An individual message."""
 
@@ -45,7 +97,7 @@ class Message(db.Model):
 
     id_to  = db.Column(
         db.Integer,
-        nullable=False,
+        db.ForeignKey('users.id', ondelete="cascade")
     )
 
     text = db.Column(
@@ -53,7 +105,7 @@ class Message(db.Model):
         nullable=False,
     )
 
-    timestamp = db.Column(
+    sent_at = db.Column(
         db.DateTime,
         nullable=False,
         default=datetime.utcnow(),
@@ -133,6 +185,11 @@ class User(db.Model):
         secondary="matches",
         primaryjoin=(Match.user_following_id == id),
         secondaryjoin=(Match.user_being_followed_id == id)
+    )
+
+    images = db.relationship(
+        "Images",
+        backref="users"
     )
 
     def __repr__(self):
