@@ -217,15 +217,17 @@ def upload_pic(user_id):
 
     if img:
             filename = secure_filename(img.filename)
-            img.save(filename)
-            s3.upload_file(
+            # img.save(filename)
+            s3.put_object(
+                Body=img,
                 Bucket = app.config['S3_BUCKET'],
-                Filename=filename,
+                # Filename=filename,
                 Key = filename,
-                ExtraArgs={
-                    "ContentType":  "image/jpeg",
-                    'ACL': "public-read"
-                }
+                ContentType="image/jpeg"
+                # ExtraArgs={
+                #     "ContentType":  "image/jpeg",
+                #     'ACL': "public-read"
+                # }
             )
             msg = "Upload Done ! "
             file_path = "{}{}".format(app.config["S3_LOCATION"], img.filename)
@@ -236,7 +238,6 @@ def upload_pic(user_id):
             user.images.append(image)
 
             db.session.commit()
-
             return jsonify(file_path=file_path,msg="success")
 
     return jsonify(msg="no image specified")
@@ -263,10 +264,71 @@ def delete_photos(user_id, photo_id):
     except AttributeError:
         return jsonify({"msg": "Image not found!"})
 
+############# Messages ROUTES ############################
+
+@app.get("/api/users/<int:user_id>/messages")
+@jwt_required()
+def get_messages(user_id):
+    """ Get all messages of that user
+        Returns JSON like:
+        {messages: [{id, id_from, id_to, text, sent_at}, ...]}
+    """
+    # current_user = get_jwt_identity()
+
+    user = User.query.get(user_id)
+
+
+    messages = [message.to_dict() for message in user.messages]
+
+    return jsonify(messages=messages)
+
+@app.get('/api/users/<int:user_id>/<int:id_to>')
+@jwt_required()
+def get_messages_to_specific_user(user_id,id_to):
+    """ Get all messages between the current user and a specific user
+        Returns JSON like:
+        {messages: [{id, id_from, id_to, text, sent_at}, ...]}
+    """
+    user = User.query.get(user_id)
+
+
+    messages = [message.to_dict() for message in user.messages if message.id_to == id_to or message.id_from == id_to]
+
+    return jsonify(messages=messages)
+
+@app.post('/api/users/<int:user_id>/<int:id_to>')
+@jwt_required()
+def send_message(user_id,id_to):
+    """ send a message to a specific user
+        {message: [{id, id_from, id_to, text, sent_at}, ...]}
+    """
+
+    message_data = request.json
+    user = User.query.get(user_id)
+
+    message_id_from = user_id
+    message_id_to = id_to
+    message_text = message_data["text"]
+
+    new_message = Message.add_message(message_id_from,message_id_to,message_text)
+
+    user.messages.append(new_message)
+
+    db.session.commit()
+
+
+    messages = [message.to_dict() for message in user.messages if message.id_to == id_to]
+
+    return jsonify(messages=messages)
 
 
 
-
+# {
+# 	"username": "lyne",
+#   "email":"lynecha@gmail.com",
+#   "password": "123456",
+#   "location": "92833"
+# }
 
 
 

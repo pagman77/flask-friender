@@ -131,11 +131,33 @@ class Message(db.Model):
         default=datetime.utcnow(),
     )
 
+    @classmethod
+    def add_message(cls, id_from, id_to, text):
+        """Add a message."""
+
+        message = Message(
+            id_from = id_from,
+            id_to = id_to,
+            text = text
+        )
+
+        return message
+
     def __repr__(self):
         return f"<Message:\
         to: {self.id_to},\
         from: {self.id_from},\
         timestamp: {self.timestamp}>"
+
+    def to_dict(self):
+
+        return {
+            "id": self.id,
+            "id_from": self.id_from,
+            "id_to": self.id_to,
+            "text": self.text,
+            "sent_at": self.sent_at
+        }
 
 
 
