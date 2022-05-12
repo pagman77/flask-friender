@@ -201,7 +201,7 @@ class User(db.Model):
     )
 
     location = db.Column(
-        db.VARCHAR,
+        db.String,
         nullable=False,
     )
 

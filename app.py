@@ -6,6 +6,7 @@ from flask import Flask, flash, redirect, request, jsonify
 from flask_debugtoolbar import DebugToolbarExtension
 from sqlalchemy.exc import IntegrityError
 from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required, JWTManager
+from zipcode import Distance
 
 from models import db, connect_db, User, Message, Match, Images
 
@@ -94,15 +95,19 @@ def login():
 @app.get("/api/users")
 @jwt_required()
 def get_users():
-    """ Get all users
+    """ Get all users that fall within location paramaters
         Returns JSON like:
         {users: [{id, email, username, hobbies, interests}, ...]}
     """
-    # current_user = get_jwt_identity()
+    username = get_jwt_identity()
 
-    users = [user.to_dict() for user in User.query.all()]
+    curr_user = User.query.filter_by(username=username).one()
 
-    return jsonify(users=users)
+    users = [user.to_dict() for user in User.query.all() if user.username != username]
+
+    matches = Distance.get_location_matches(curr_user.location, users, curr_user.friend_radius)
+
+    return jsonify(matches=matches)
 
 @app.get('/api/users/<int:user_id>')
 @jwt_required()
@@ -132,9 +137,9 @@ def edit_single_user(user_id):
         user = User.query.get(user_id)
         user.hobbies = data.get('hobbies', user.hobbies)
         user.bio = data.get('bio', user.bio)
-        user.interests = data.get('size', user.interests)
-        user.location = data.get('size', user.location)
-        user.friend_radius = data.get('size', user.friend_radius)
+        user.interests = data.get('interests', user.interests)
+        user.location = data.get('location', user.location)
+        user.friend_radius = data.get('friend_radius', user.friend_radius)
 
         db.session.add(user)
         db.session.commit()
@@ -273,7 +278,7 @@ def get_messages(user_id):
         Returns JSON like:
         {messages: [{id, id_from, id_to, text, sent_at}, ...]}
     """
-    # current_user = get_jwt_identity()
+
 
     user = User.query.get(user_id)
 
