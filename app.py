@@ -101,7 +101,7 @@ def get_users():
     """
     username = get_jwt_identity()
 
-    curr_user = User.query.filter_by(username=username).one()
+    curr_user = User.query.get(username)
 
     users = [user.to_dict() for user in User.query.all() if user.username != username]
 
@@ -109,23 +109,23 @@ def get_users():
 
     return jsonify(matches=matches)
 
-@app.get('/api/users/<int:user_id>')
+@app.get('/api/users/<username>')
 @jwt_required()
-def get_single_user(user_id):
+def get_single_user(username):
     """Get a single user
     returns {msg: "User not found!"} if no user exists"""
 
     try:
-        user = User.query.get(user_id)
+        user = User.query.get(username)
         user = user.to_dict()
         return jsonify(user=user)
     except AttributeError:
         return jsonify({"msg": "User not found!"})
 
 
-@app.patch('/api/users/<int:user_id>')
+@app.patch('/api/users/<username>')
 @jwt_required()
-def edit_single_user(user_id):
+def edit_single_user(username):
     """update user
        returns JSON like:
        {user: [{id, username, email, hobbies, interests...}]}
@@ -134,7 +134,7 @@ def edit_single_user(user_id):
     data = request.json
 
     try:
-        user = User.query.get(user_id)
+        user = User.query.get(username)
         user.hobbies = data.get('hobbies', user.hobbies)
         user.bio = data.get('bio', user.bio)
         user.interests = data.get('interests', user.interests)
@@ -151,13 +151,13 @@ def edit_single_user(user_id):
         return jsonify({"msg": "User not found!"})
 
 
-@app.delete('/api/users/<int:user_id>')
+@app.delete('/api/users/<username>')
 @jwt_required()
-def delete_user(user_id):
+def delete_user(username):
     """Delete a user"""
 
     try:
-        user = User.query.get(user_id)
+        user = User.query.get(username)
         db.session.delete(user)
         db.session.commit()
         return jsonify(msg="deleted sucessfully")
@@ -165,29 +165,27 @@ def delete_user(user_id):
         return jsonify({"msg": "User not found!"})
 
 
-@app.post('/api/users/<int:user_id>/match')
+@app.post('/api/users/<username>/match')
 @jwt_required()
-def match_person(user_id):
+def match_person(username):
     """Match with a different person"""
 
-    print(request.json)
-
-    match_id = request.json["match"]
-    match = Match.add_match(user_id,match_id)
+    match_username = request.json["match"]
+    match = Match.add_match(username,match_username)
 
     db.session.commit()
     return jsonify(msg="friended successfully")
 
 
-@app.post('/api/users/<int:user_id>/unmatch')
+@app.post('/api/users/<username>/unmatch')
 @jwt_required()
-def unmatch_person(user_id):
+def unmatch_person(username):
     """unmatch with a different person"""
-    match_id = request.json["unmatch"]
+    match_username = request.json["unmatch"]
 
     match = Match.query.filter(
-        Match.user_being_followed_id == user_id,
-        Match.user_following_id == match_id).one_or_none()
+        Match.user_being_followed == username,
+        Match.user_following == match_username).one_or_none()
 
     if not match:
         return jsonify({"msg": "No match found!"})
@@ -200,12 +198,12 @@ def unmatch_person(user_id):
 
 ############# USER PHOTO ROUTES ############################
 
-@app.get('/api/users/<int:user_id>/photos')
+@app.get('/api/users/<username>/photos')
 @jwt_required()
-def get_photos(user_id):
+def get_photos(username):
     """Get all photos of a user"""
 
-    user = User.query.get_or_404(user_id)
+    user = User.query.get_or_404(username)
 
     images = user.images
 
@@ -213,9 +211,9 @@ def get_photos(user_id):
 
     return jsonify(images=images)
 
-@app.post('/api/users/<int:user_id>/photos')
+@app.post('/api/users/<username>/photos')
 @jwt_required()
-def upload_pic(user_id):
+def upload_pic(username):
     """Upload a picture"""
 
     img = request.files['file']
@@ -237,8 +235,8 @@ def upload_pic(user_id):
             msg = "Upload Done ! "
             file_path = "{}{}".format(app.config["S3_LOCATION"], img.filename)
 
-            user = User.query.get_or_404(user_id)
-            image = Images.create_new_image(user.id, file_path, img.filename)
+            user = User.query.get_or_404(username)
+            image = Images.create_new_image(username, file_path, img.filename)
 
             user.images.append(image)
 
@@ -248,9 +246,9 @@ def upload_pic(user_id):
     return jsonify(msg="no image specified")
 
 
-@app.delete('/api/users/<int:user_id>/photos/<int:photo_id>')
+@app.delete('/api/users/<username>/photos/<int:photo_id>')
 @jwt_required()
-def delete_photos(user_id, photo_id):
+def delete_photos(username, photo_id):
     """Delete a user photo"""
 
     try:
@@ -271,70 +269,60 @@ def delete_photos(user_id, photo_id):
 
 ############# Messages ROUTES ############################
 
-@app.get("/api/users/<int:user_id>/messages")
+@app.get("/api/users/<username>/messages")
 @jwt_required()
-def get_messages(user_id):
+def get_messages(username):
     """ Get all messages of that user
         Returns JSON like:
         {messages: [{id, id_from, id_to, text, sent_at}, ...]}
     """
 
 
-    user = User.query.get(user_id)
+    user = User.query.get(username)
 
 
     messages = [message.to_dict() for message in user.messages]
 
     return jsonify(messages=messages)
 
-@app.get('/api/users/<int:user_id>/<int:id_to>')
+@app.get('/api/users/<user_from>/<user_to>')
 @jwt_required()
-def get_messages_to_specific_user(user_id,id_to):
+def get_messages_to_specific_user(user_from,user_to):
     """ Get all messages between the current user and a specific user
         Returns JSON like:
         {messages: [{id, id_from, id_to, text, sent_at}, ...]}
     """
-    user = User.query.get(user_id)
+    user = User.query.get(user_from)
 
 
-    messages = [message.to_dict() for message in user.messages if message.id_to == id_to or message.id_from == id_to]
+    messages = [message.to_dict() for message in user.messages if message.user_to == user_to or message.user_from == user_to]
 
     return jsonify(messages=messages)
 
-@app.post('/api/users/<int:user_id>/<int:id_to>')
+@app.post('/api/users/<user_from>/<user_to>')
 @jwt_required()
-def send_message(user_id,id_to):
+def send_message(user_from,user_to):
     """ send a message to a specific user
         {message: [{id, id_from, id_to, text, sent_at}, ...]}
     """
 
     message_data = request.json
-    user = User.query.get(user_id)
+    user = User.query.get(user_from)
 
-    message_id_from = user_id
-    message_id_to = id_to
+    message_user_from = user_from
+    message_user_to = user_to
     message_text = message_data["text"]
 
-    new_message = Message.add_message(message_id_from,message_id_to,message_text)
+    new_message = Message.add_message(message_user_from,message_user_to,message_text)
 
     user.messages.append(new_message)
 
     db.session.commit()
 
 
-    messages = [message.to_dict() for message in user.messages if message.id_to == id_to]
+    messages = [message.to_dict() for message in user.messages if message.user_to == user_to]
 
     return jsonify(messages=messages)
-
-
-
-# {
-# 	"username": "lyne",
-#   "email":"lynecha@gmail.com",
-#   "password": "123456",
-#   "location": "92833"
-# }
-
 
 
 

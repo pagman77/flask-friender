@@ -20,9 +20,9 @@ class Images(db.Model):
         primary_key=True
     )
 
-    user_id  = db.Column(
+    username  = db.Column(
         db.Integer,
-        db.ForeignKey('users.id', ondelete="cascade")
+        db.ForeignKey('users.username', ondelete="cascade")
     )
 
     path = db.Column(
@@ -38,18 +38,18 @@ class Images(db.Model):
 
         return {
             "id": self.id,
-            "user_id": self.user_id,
+            "username": self.username,
             "path": self.path,
             "filename": self.filename
         }
 
     @classmethod
-    def create_new_image(cls, user_id, path, filename):
+    def create_new_image(cls, username, path, filename):
         """ Returns a class of a new image
         {id, user_id, image_path} """
 
         image = Images(
-            user_id=user_id,
+            username=username,
             path=path,
             filename= filename
         )
@@ -67,15 +67,15 @@ class Match(db.Model):
 
     __tablename__ = 'matches'
 
-    user_being_followed_id = db.Column(
+    user_being_followed = db.Column(
         db.Integer,
-        db.ForeignKey('users.id', ondelete="cascade"),
+        db.ForeignKey('users.username', ondelete="cascade"),
         primary_key=True
     )
 
-    user_following_id = db.Column(
+    user_following = db.Column(
         db.Integer,
-        db.ForeignKey('users.id', ondelete="cascade"),
+        db.ForeignKey('users.username', ondelete="cascade"),
         primary_key=True
     )
 
@@ -86,12 +86,12 @@ class Match(db.Model):
     )
 
     @classmethod
-    def add_match(cls, user_id, match_id):
+    def add_match(cls, username, match_username):
         """Add a match to the database."""
 
         match = Match(
-            user_being_followed_id = user_id,
-            user_following_id = match_id,
+            user_being_followed = username,
+            user_following = match_username,
             unfriended = False
         )
 
@@ -110,14 +110,14 @@ class Message(db.Model):
         primary_key=True
     )
 
-    id_from = db.Column(
+    user_from = db.Column(
         db.Integer,
-        db.ForeignKey('users.id', ondelete="cascade")
+        db.ForeignKey('users.username', ondelete="cascade")
     )
 
-    id_to  = db.Column(
+    user_to  = db.Column(
         db.Integer,
-        db.ForeignKey('users.id', ondelete="cascade")
+        db.ForeignKey('users.username', ondelete="cascade")
     )
 
     text = db.Column(
@@ -132,12 +132,12 @@ class Message(db.Model):
     )
 
     @classmethod
-    def add_message(cls, id_from, id_to, text):
+    def add_message(cls, user_from, user_to, text):
         """Add a message."""
 
         message = Message(
-            id_from = id_from,
-            id_to = id_to,
+            user_from = user_from,
+            user_to = user_to,
             text = text
         )
 
@@ -145,8 +145,8 @@ class Message(db.Model):
 
     def __repr__(self):
         return f"<Message:\
-        to: {self.id_to},\
-        from: {self.id_from},\
+        to: {self.user_to},\
+        from: {self.user_from},\
         timestamp: {self.timestamp}>"
 
     def to_dict(self):
@@ -166,9 +166,10 @@ class User(db.Model):
 
     __tablename__ = 'users'
 
-    id = db.Column(
-        db.Integer,
+    username = db.Column(
+        db.Text,
         primary_key=True,
+        nullable=False
     )
 
     email = db.Column(
@@ -177,11 +178,6 @@ class User(db.Model):
         unique=True,
     )
 
-    username = db.Column(
-        db.Text,
-        nullable=False,
-        unique=True,
-    )
 
     password = db.Column(
         db.Text,
@@ -214,31 +210,31 @@ class User(db.Model):
     messages = db.relationship(
         "Message",
         backref="users",
-        primaryjoin=(Message.id_from == id)
+        primaryjoin=(Message.user_from == username)
     )
 
     followers = db.relationship(
         "User",
         secondary="matches",
-        primaryjoin=(Match.user_being_followed_id == id),
-        secondaryjoin=(Match.user_following_id == id)
+        primaryjoin=(Match.user_being_followed == username),
+        secondaryjoin=(Match.user_following == username)
     )
 
     following = db.relationship(
         "User",
         secondary="matches",
-        primaryjoin=(Match.user_following_id == id),
-        secondaryjoin=(Match.user_being_followed_id == id)
+        primaryjoin=(Match.user_following == username),
+        secondaryjoin=(Match.user_being_followed == username)
     )
 
     images = db.relationship(
         "Images",
         backref="users",
-        primaryjoin=(Images.user_id == id)
+        primaryjoin=(Images.username == username)
     )
 
     def __repr__(self):
-        return f"<User #{self.id}:\
+        return f"<User:\
         {self.username},\
         {self.email},\
         {self.bio},\
@@ -286,8 +282,7 @@ class User(db.Model):
         If can't find matching user (or if password is wrong), returns False.
         """
 
-        user = cls.query.filter_by(username=username).first()
-        print(user)
+        user = cls.query.get(username)
         if user:
             is_auth = bcrypt.check_password_hash(user.password, password)
             if is_auth:
@@ -298,9 +293,8 @@ class User(db.Model):
     def to_dict(self):
 
         return {
-            "id": self.id,
-            "email": self.email,
             "username": self.username,
+            "email": self.email,
             "password": self.password,
             "hobbies": self.hobbies,
             "bio": self.bio,
