@@ -8,6 +8,7 @@ from flask_debugtoolbar import DebugToolbarExtension
 from sqlalchemy.exc import IntegrityError
 from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required, JWTManager
 from zipcode import Distance
+import uuid
 
 from models import db, connect_db, User, Message, Match, Images
 
@@ -105,16 +106,14 @@ def get_users():
 
     curr_user = User.query.get(username)
     users = User.query.all()
-    for user in users:
-        if user.username != username:
-            images = user.images
-            user = user.to_dict()
-            images = [image.to_dict() for image in images]
-            user["images"] = images
+    # for user in users:
+    #     if user.username != username:
+    #         images = user.images
+    #         user = user.to_dict()
+    #         images = [image.to_dict() for image in images]
+    #         user["images"] = images
         
-    # users = [user.to_dict() for user in User.query.all() if user.username != username]
-    
-    
+    users = [user.to_dict() for user in User.query.all() if user.username != username]
 
     matches = Distance.get_location_matches(curr_user.location, users, curr_user.friend_radius)
 
@@ -230,23 +229,19 @@ def upload_pic(username):
 
     if img:
             filename = secure_filename(img.filename)
-            # img.save(filename)
+            filename = str(uuid.uuid1())
             s3.put_object(
                 Body=img,
                 Bucket = app.config['S3_BUCKET'],
-                # Filename=filename,
+
                 Key = filename,
                 ContentType="image/jpeg"
-                # ExtraArgs={
-                #     "ContentType":  "image/jpeg",
-                #     'ACL': "public-read"
-                # }
             )
             msg = "Upload Done ! "
-            file_path = "{}{}".format(app.config["S3_LOCATION"], img.filename)
+            file_path = "{}{}".format(app.config["S3_LOCATION"], filename)
 
             user = User.query.get_or_404(username)
-            image = Images.create_new_image(username, file_path, img.filename)
+            image = Images.create_new_image(username, file_path, filename)
 
             user.images.append(image)
 
