@@ -106,13 +106,7 @@ def get_users():
 
     curr_user = User.query.get(username)
     users = User.query.all()
-    # for user in users:
-    #     if user.username != username:
-    #         images = user.images
-    #         user = user.to_dict()
-    #         images = [image.to_dict() for image in images]
-    #         user["images"] = images
-        
+
     users = [user.to_dict() for user in User.query.all() if user.username != username]
 
     matches = Distance.get_location_matches(curr_user.location, users, curr_user.friend_radius)

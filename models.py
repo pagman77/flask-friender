@@ -1,4 +1,5 @@
 """SQLAlchemy models for Friender."""
+from codecs import backslashreplace_errors
 from flask import Flask
 from flask_bcrypt import Bcrypt
 
@@ -232,6 +233,12 @@ class User(db.Model):
         backref="users",
         primaryjoin=(Images.username == username)
     )
+
+    # matches = db.relationship(
+    #     "Match",
+    #     backref="users",
+    #     primaryjoin=(Match.user_being_followed == username)
+    # )
 
     def __repr__(self):
         return f"<User:\
