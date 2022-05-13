@@ -3,6 +3,7 @@ import os
 from urllib import response
 import boto3, botocore
 from flask import Flask, flash, redirect, request, jsonify
+from flask_cors import CORS, cross_origin
 from flask_debugtoolbar import DebugToolbarExtension
 from sqlalchemy.exc import IntegrityError
 from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required, JWTManager
@@ -10,10 +11,11 @@ from zipcode import Distance
 
 from models import db, connect_db, User, Message, Match, Images
 
-
 app = Flask(__name__)
-from werkzeug.utils import secure_filename
 
+CORS(app)
+
+from werkzeug.utils import secure_filename
 # Get DB_URI from environ variable (useful for production/testing) or,
 # if not set there, use development local db.
 app.config['SQLALCHEMY_DATABASE_URI'] = (
@@ -34,7 +36,7 @@ s3 = boto3.client('s3',
                     aws_secret_access_key= app.config['S3_SECRET'],
                      )
 
-toolbar = DebugToolbarExtension(app)
+# toolbar = DebugToolbarExtension(app)
 
 jwt = JWTManager(app)
 connect_db(app)
@@ -102,8 +104,17 @@ def get_users():
     username = get_jwt_identity()
 
     curr_user = User.query.get(username)
-
-    users = [user.to_dict() for user in User.query.all() if user.username != username]
+    users = User.query.all()
+    for user in users:
+        if user.username != username:
+            images = user.images
+            user = user.to_dict()
+            images = [image.to_dict() for image in images]
+            user["images"] = images
+        
+    # users = [user.to_dict() for user in User.query.all() if user.username != username]
+    
+    
 
     matches = Distance.get_location_matches(curr_user.location, users, curr_user.friend_radius)
 
@@ -215,7 +226,6 @@ def get_photos(username):
 @jwt_required()
 def upload_pic(username):
     """Upload a picture"""
-
     img = request.files['file']
 
     if img:

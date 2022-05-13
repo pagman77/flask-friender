@@ -21,7 +21,7 @@ class Images(db.Model):
     )
 
     username  = db.Column(
-        db.Integer,
+        db.String,
         db.ForeignKey('users.username', ondelete="cascade")
     )
 
@@ -68,13 +68,13 @@ class Match(db.Model):
     __tablename__ = 'matches'
 
     user_being_followed = db.Column(
-        db.Integer,
+        db.String,
         db.ForeignKey('users.username', ondelete="cascade"),
         primary_key=True
     )
 
     user_following = db.Column(
-        db.Integer,
+        db.String,
         db.ForeignKey('users.username', ondelete="cascade"),
         primary_key=True
     )
@@ -111,12 +111,12 @@ class Message(db.Model):
     )
 
     user_from = db.Column(
-        db.Integer,
+        db.String,
         db.ForeignKey('users.username', ondelete="cascade")
     )
 
     user_to  = db.Column(
-        db.Integer,
+        db.String,
         db.ForeignKey('users.username', ondelete="cascade")
     )
 
@@ -153,8 +153,8 @@ class Message(db.Model):
 
         return {
             "id": self.id,
-            "id_from": self.id_from,
-            "id_to": self.id_to,
+            "user_from": self.user_from,
+            "user_to": self.user_to,
             "text": self.text,
             "sent_at": self.sent_at
         }
@@ -240,7 +240,8 @@ class User(db.Model):
         {self.bio},\
         {self.hobbies},\
         {self.interests},\
-        {self.location}>"
+        {self.location},\
+        {self.images}>"
 
     def is_followed_by(self, other_user):
         """Is this user followed by `other_user`?"""
@@ -302,7 +303,6 @@ class User(db.Model):
             "location": self.location,
             "friend_radius": self.friend_radius
         }
-
 
 
 def connect_db(app):
