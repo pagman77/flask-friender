@@ -19,7 +19,6 @@ class Distance():
         ZIPCODES MUST BE IN STRING FORMAT."""
 
         max_kilos = int(max_distance) * MI_TO_KM
-        print("am i here", users)
         matches = [match for match in users if (dist.query_postal_code(location, match["location"])) <= max_kilos]
 
         return matches

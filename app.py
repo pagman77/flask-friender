@@ -1,9 +1,8 @@
 import json
 import os
-from urllib import response
-import boto3, botocore
-from flask import Flask, flash, redirect, request, jsonify
-from flask_cors import CORS, cross_origin
+import boto3
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 from flask_debugtoolbar import DebugToolbarExtension
 from sqlalchemy.exc import IntegrityError
 from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required, JWTManager
@@ -51,11 +50,8 @@ db.create_all()
 @app.route('/api/signup', methods=["POST"])
 def signup():
     """Handle user signup.
-
-    Create new user and add to DB.
-
-    If the there already is a user with that username: flash message
-    and re-present form.
+    Create new user, add to db, return JWT.
+    Return error message if user is already taken.
     """
 
     try:
@@ -64,22 +60,21 @@ def signup():
         password=request.json["password"]
         location= request.json["location"]
 
-        new_user = User.signup(username, email, password, location)
+        User.signup(username, email, password, location)
         db.session.commit()
-
         access_token = create_access_token(identity=username)
+
         return jsonify(access_token=access_token)
 
     except IntegrityError:
         return jsonify(msg = "Username already taken")
 
 
-
 @app.route('/api/token', methods=["POST"])
 def login():
-    """POST /auth/token:  { username, password } => { token }
-    Returns JWT token which can be used to authenticate further requests.
-    Authorization required: none"""
+    """{ username, password } => { token }
+    Takes in user and password and returns JWT.
+    """
 
     user = User.authenticate(request.json["username"],
                                  request.json["password"])
@@ -92,15 +87,13 @@ def login():
 
 
 
-
 ############# USER ROUTES ############################
 
 @app.get("/api/users")
 @jwt_required()
 def get_users():
-    """ Get all users that fall within location paramaters
-        Returns JSON like:
-        {users: [{id, email, username, hobbies, interests}, ...]}
+    """ Get all users that fall within location paramaters.
+        Returns: {users: [{username, email, hobbies, bio, interests, location, friend_radius}, ...]}
     """
     username = get_jwt_identity()
 
@@ -116,7 +109,7 @@ def get_users():
 @app.get('/api/users/<username>')
 @jwt_required()
 def get_single_user(username):
-    """Get a single user
+    """Return a user: {username, email, hobbies, bio, interests, location, friend_radius}
     returns {msg: "User not found!"} if no user exists"""
 
     try:
@@ -130,9 +123,8 @@ def get_single_user(username):
 @app.patch('/api/users/<username>')
 @jwt_required()
 def edit_single_user(username):
-    """update user
-       returns JSON like:
-       {user: [{id, username, email, hobbies, interests...}]}
+    """Update a user and return user object:
+    {username, email, hobbies, bio, interests, location, friend_radius}
     """
 
     data = request.json
@@ -172,19 +164,19 @@ def delete_user(username):
 @app.post('/api/users/<username>/match')
 @jwt_required()
 def match_person(username):
-    """Match with a different person"""
+    """Match with another user. Returns message if successful."""
 
     match_username = request.json["match"]
     match = Match.add_match(username,match_username)
-
     db.session.commit()
-    return jsonify(msg="friended successfully")
+    if match:
+        return jsonify(msg="friended successfully")
 
 
 @app.post('/api/users/<username>/unmatch')
 @jwt_required()
 def unmatch_person(username):
-    """unmatch with a different person"""
+    """Unmatch with another user."""
     match_username = request.json["unmatch"]
 
     match = Match.query.filter(
@@ -208,39 +200,37 @@ def get_photos(username):
     """Get all photos of a user"""
 
     user = User.query.get_or_404(username)
-
     images = user.images
-
     images = [image.to_dict() for image in images]
 
     return jsonify(images=images)
+
 
 @app.post('/api/users/<username>/photos')
 @jwt_required()
 def upload_pic(username):
     """Upload a picture"""
+
     img = request.files['file']
 
     if img:
-            filename = secure_filename(img.filename)
-            filename = str(uuid.uuid1())
-            s3.put_object(
-                Body=img,
-                Bucket = app.config['S3_BUCKET'],
+        filename = secure_filename(img.filename)
+        filename = str(uuid.uuid1())
+        s3.put_object(
+            Body=img,
+            Bucket = app.config['S3_BUCKET'],
+            Key = filename,
+            ContentType="image/jpeg"
+        )
 
-                Key = filename,
-                ContentType="image/jpeg"
-            )
-            msg = "Upload Done ! "
-            file_path = "{}{}".format(app.config["S3_LOCATION"], filename)
+        file_path = "{}{}".format(app.config["S3_LOCATION"], filename)
 
-            user = User.query.get_or_404(username)
-            image = Images.create_new_image(username, file_path, filename)
+        user = User.query.get_or_404(username)
+        image = Images.create_new_image(username, file_path, filename)
+        user.images.append(image)
+        db.session.commit()
 
-            user.images.append(image)
-
-            db.session.commit()
-            return jsonify(file_path=file_path,msg="success")
+        return jsonify(file_path=file_path,msg="success")
 
     return jsonify(msg="no image specified")
 
@@ -260,7 +250,6 @@ def delete_photos(username, photo_id):
         db.session.delete(image)
         db.session.commit()
 
-
         return jsonify(msg="deleted sucessfully")
 
     except AttributeError:
@@ -271,29 +260,22 @@ def delete_photos(username, photo_id):
 @app.get("/api/users/<username>/messages")
 @jwt_required()
 def get_messages(username):
-    """ Get all messages of that user
-        Returns JSON like:
-        {messages: [{id, id_from, id_to, text, sent_at}, ...]}
+    """ Get all user messages
+        Returns: {messages: [{id, id_from, id_to, text, sent_at}, ...]}
     """
 
-
     user = User.query.get(username)
-
-
     messages = [message.to_dict() for message in user.messages]
 
     return jsonify(messages=messages)
 
 @app.get('/api/users/<user_from>/<user_to>')
 @jwt_required()
-def get_messages_to_specific_user(user_from,user_to):
-    """ Get all messages between the current user and a specific user
-        Returns JSON like:
-        {messages: [{id, id_from, id_to, text, sent_at}, ...]}
+def get_messages_to_user(user_from,user_to):
+    """ Get all messages between the current user and another user
+        Returns: {messages: [{id, id_from, id_to, text, sent_at}, ...]}
     """
     user = User.query.get(user_from)
-
-
     messages = [message.to_dict() for message in user.messages if message.user_to == user_to or message.user_from == user_to]
 
     return jsonify(messages=messages)
@@ -301,8 +283,8 @@ def get_messages_to_specific_user(user_from,user_to):
 @app.post('/api/users/<user_from>/<user_to>')
 @jwt_required()
 def send_message(user_from,user_to):
-    """ send a message to a specific user
-        {message: [{id, id_from, id_to, text, sent_at}, ...]}
+    """ Send a message to a user
+        Returns conversation: {message: [{id, id_from, id_to, text, sent_at}, ...]}
     """
 
     message_data = request.json
@@ -313,45 +295,9 @@ def send_message(user_from,user_to):
     message_text = message_data["text"]
 
     new_message = Message.add_message(message_user_from,message_user_to,message_text)
-
     user.messages.append(new_message)
-
     db.session.commit()
-
 
     messages = [message.to_dict() for message in user.messages if message.user_to == user_to]
 
     return jsonify(messages=messages)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# INSERT INTO USERS (username, email, location, password, friend_radius)
-# VALUES ('lyne', 'tes1t@test.com', '12346', 'plaintext','20')
-
-# INSERT INTO USERS (username, email, location, password, friend_radius)
-# VALUES ('michael', 'test@test.com', '12345', 'plaintext','20')
-
-# INSERT INTO messages (id_to, id_from, text, timestamp) VALUES ('1','2','new message',current_timestamp)

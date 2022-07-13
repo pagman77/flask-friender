@@ -1,18 +1,16 @@
 """SQLAlchemy models for Friender."""
-from codecs import backslashreplace_errors
 from flask import Flask
 from flask_bcrypt import Bcrypt
 
 from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy.types import VARCHAR
 
 bcrypt = Bcrypt()
 db = SQLAlchemy()
 
 
 class Images(db.Model):
-    """images of users"""
+    """Paths and details on user uploaded images."""
 
     __tablename__ = 'images'
 
@@ -30,6 +28,7 @@ class Images(db.Model):
         db.Text,
         nullable=False,
     )
+
     filename = db.Column(
         db.Text,
         nullable=False
@@ -46,7 +45,7 @@ class Images(db.Model):
 
     @classmethod
     def create_new_image(cls, username, path, filename):
-        """ Returns a class of a new image
+        """Returns a class of a new image and returns it
         {id, user_id, image_path} """
 
         image = Images(
@@ -60,11 +59,8 @@ class Images(db.Model):
         return image
 
 
-
-
-
 class Match(db.Model):
-    """Connection of a usering doing the matching <-> the user being matched."""
+    """Connection of a user matching and the user being matched."""
 
     __tablename__ = 'matches'
 
@@ -98,7 +94,6 @@ class Match(db.Model):
 
         db.session.add(match)
         return match
-
 
 
 class Message(db.Model):
@@ -161,7 +156,6 @@ class Message(db.Model):
         }
 
 
-
 class User(db.Model):
     """User in the system."""
 
@@ -178,7 +172,6 @@ class User(db.Model):
         nullable=False,
         unique=True,
     )
-
 
     password = db.Column(
         db.Text,
@@ -266,10 +259,7 @@ class User(db.Model):
 
     @classmethod
     def signup(cls, username, email, password, location):
-        """Sign up user.
-
-        Hashes password and adds user to system.
-        """
+        """Sign up user, hashes password, and adds user to database."""
 
         hashed_pwd = bcrypt.generate_password_hash(password).decode('UTF-8')
 
@@ -281,14 +271,12 @@ class User(db.Model):
         )
 
         db.session.add(user)
+
         return user
 
     @classmethod
     def authenticate(cls, username, password):
-        """Find user with `username` and `password`.
-
-        If can't find matching user (or if password is wrong), returns False.
-        """
+        """Return authenticated user or False."""
 
         user = cls.query.get(username)
         if user:
@@ -303,7 +291,6 @@ class User(db.Model):
         return {
             "username": self.username,
             "email": self.email,
-            "password": self.password,
             "hobbies": self.hobbies,
             "bio": self.bio,
             "interests": self.interests,
@@ -313,10 +300,7 @@ class User(db.Model):
 
 
 def connect_db(app):
-    """Connect this database to provided Flask app.
-
-    You should call this in your Flask app.
-    """
+    """Connect app to database."""
 
     db.app = app
     db.init_app(app)
